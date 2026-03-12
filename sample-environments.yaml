@@ -35,6 +35,17 @@ data:
     [
       {"name": "MCP_URL", "value": "http://reservation-tool:8000/mcp"}
     ]
+  mcp-finance: |
+    [
+      {"name": "MCP_URL", "value": "http://finance-tool:8000/mcp"}
+    ]
+  # LM Studio OpenAI-compatible endpoint (host.docker.internal for Mac/Windows kind)
+  lmstudio: |
+    [
+      {"name": "LLM_API_BASE", "value": "http://host.docker.internal:1234/v1"},
+      {"name": "LLM_MODEL", "value": "qwen/qwen3-30b-a3b-2507"},
+      {"name": "LLM_API_KEY", "value": "not-needed"}
+    ]
   mcp-slack-config: |
     [
       {

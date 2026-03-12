@@ -1,0 +1,28 @@
+[project]
+name = "financial-agent"
+version = "0.1.0"
+description = "Financial analysis agent using LangGraph, MCP tools, and MLflow tracing"
+authors = [
+    { name = "Kagenti Contributors" }
+]
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk>=0.2.16",
+    "langgraph>=0.2.55",
+    "langchain-openai>=0.3.7",
+    "langchain-mcp-adapters>=0.1.0",
+    "openinference-instrumentation-langchain>=0.1.36",
+    "pydantic-settings>=2.8.1",
+    "mlflow>=3.0.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.scripts]
+server = "financial_agent.agent:run"
+test-agent = "financial_agent.test:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

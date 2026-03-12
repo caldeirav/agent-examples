@@ -61,7 +61,25 @@ Interact with GitHub repositories (written in Go).
 **Requirements**:
 - GitHub authentication token
 
-### 5. Shopping Agent (`shopping_tool/`) ⭐ NEW
+### 5. Finance Tool (`finance_tool/`)
+
+Yahoo Finance stock market data via yfinance.
+
+**Features**:
+- Stock fundamentals (PE ratio, market cap, dividends)
+- Historical prices and returns
+- Financial statements (balance sheet, income, cash flow)
+- Company news and headlines
+
+**Tools**:
+- `get_stock_fundamentals(ticker)` - PE, market cap, dividends, sector
+- `get_historical_prices(ticker, period)` - OHLCV, returns, moving averages
+- `get_financial_statements(ticker)` - Balance sheet, income, cash flow
+- `get_company_news(ticker)` - Recent headlines
+
+**Used by**: [Financial Agent](../a2a/financial_agent/)
+
+### 6. Shopping Agent (`shopping_tool/`) ⭐ NEW
 
 AI-powered shopping recommendations using LangChain, LangGraph, OpenAI, and SerpAPI.
 
@@ -164,6 +182,7 @@ Tools use annotations to describe their behavior:
 | Movie | Python | FastMCP | requests + OMDb |
 | Slack | Python | FastMCP | slack_sdk |
 | GitHub | Go | Custom | GitHub API |
+| Finance | Python | FastMCP | yfinance |
 | Shopping Agent | Python | FastMCP | SerpAPI |
 
 ## Advanced Example: Shopping Agent Architecture
