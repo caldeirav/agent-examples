@@ -7,9 +7,16 @@ import pytest
 
 # Mock heavy dependencies before importing
 for mod in [
-    "langchain_core", "langchain_core.messages", "langchain_core.tools",
-    "langchain_google_genai", "langchain_openai",
-    "langgraph", "langgraph.checkpoint", "langgraph.checkpoint.memory",
+    "langchain_core",
+    "langchain_core.messages",
+    "langchain_core.tools",
+    "langchain_google_genai",
+    "langchain_openai",
+    "langgraph",
+    "langgraph.checkpoint",
+    "langgraph.checkpoint.memory",
+    "langgraph.checkpoint.serde",
+    "langgraph.checkpoint.serde.jsonplus",
     "langgraph.prebuilt",
 ]:
     sys.modules.setdefault(mod, MagicMock())

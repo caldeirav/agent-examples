@@ -1,24 +1,36 @@
-from langgraph.graph import StateGraph, MessagesState, START
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_core.messages import SystemMessage,  AIMessage
-from langgraph.prebuilt import tools_condition, ToolNode
-from langchain_openai import ChatOpenAI
 import os
+
+from langchain_core.messages import AIMessage, SystemMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai import ChatOpenAI
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
+
 from weather_service.configuration import Configuration
 
 config = Configuration()
 
+
 # Extend MessagesState to include a final answer
 class ExtendedMessagesState(MessagesState):
-     final_answer: str = ""
+    final_answer: str = ""
 
-def get_mcpclient():
-    return MultiServerMCPClient({
-        "math": {
-            "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
-            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
-        }
-    })
+
+def get_mcpclient(headers=None):
+    """Create MCP client, optionally forwarding headers (e.g. Authorization).
+
+    Trace context propagation (traceparent headers) to the MCP gateway is
+    handled automatically by opentelemetry-instrumentation-httpx, which
+    injects the current span's context on every outgoing HTTP request.
+    """
+    mcp_config = {
+        "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+        "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+    }
+    if headers:
+        mcp_config["headers"] = headers
+    return MultiServerMCPClient({"math": mcp_config})
+
 
 async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
@@ -33,7 +45,9 @@ async def get_graph(client) -> StateGraph:
     llm_with_tools = llm.bind_tools(tools)
 
     # System message
-    sys_msg = SystemMessage(content="You are a helpful assistant tasked with providing weather information. You must use the provided tools to complete your task.")
+    sys_msg = SystemMessage(
+        content="You are a helpful assistant tasked with providing weather information. You must use the provided tools to complete your task."
+    )
 
     # Node
     def assistant(state: ExtendedMessagesState) -> ExtendedMessagesState:
@@ -60,6 +74,7 @@ async def get_graph(client) -> StateGraph:
     # Compile graph
     graph = builder.compile()
     return graph
+
 
 # async def main():
 #     from langchain_core.messages import HumanMessage
