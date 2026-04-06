@@ -30,9 +30,11 @@ async def run_query(query: str, verbose: bool = True) -> str:
     input_data = {"messages": [HumanMessage(content=query)]}
     final_answer = None
 
-    # Sync stream avoids MLflow+LangChain callback ContextVar issues with async astream
-    # (https://github.com/mlflow/mlflow/issues/22088). The A2A server still uses astream.
-    for event in graph.stream(input_data, stream_mode="updates"):
+    # MCP tools from langchain-mcp-adapters are async-only; graph.stream() uses sync
+    # tool.invoke and raises "StructuredTool does not support sync invocation".
+    # MLflow LangChain autolog may log ContextVar warnings with astream (mlflow#22088);
+    # set MLFLOW_LANGCHAIN_LOG_TRACES=false to quiet them.
+    async for event in graph.astream(input_data, stream_mode="updates"):
         for node_name, node_output in event.items():
             if verbose:
                 print(f"  [{node_name}] ", end="")

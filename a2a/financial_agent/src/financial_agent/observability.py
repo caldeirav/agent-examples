@@ -8,6 +8,35 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _tracing_initialized = False
+_mlflow_autolog_noise_filter_installed = False
+
+
+class _SuppressMlflowAsyncContextVarAutologFilter(logging.Filter):
+    """
+    MLflow LangChain autolog wraps callbacks in try/except and logs WARNING on any error
+    (mlflow.utils.autologging_utils.safety.exception_safe_function_for_class). Async LangGraph
+    + MlflowLangchainTracer can hit ContextVar/Token mismatch (github.com/mlflow/mlflow/issues/22088),
+    which spams the console though the agent still completes. Drop only those known messages.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno != logging.WARNING:
+            return True
+        msg = record.getMessage()
+        if "Encountered unexpected error during autologging" not in msg:
+            return True
+        if "was created in a different Context" in msg:
+            return False
+        return True
+
+
+def _install_mlflow_autolog_noise_filter() -> None:
+    global _mlflow_autolog_noise_filter_installed
+    if _mlflow_autolog_noise_filter_installed:
+        return
+    autolog_log = logging.getLogger("mlflow.utils.autologging_utils")
+    autolog_log.addFilter(_SuppressMlflowAsyncContextVarAutologFilter())
+    _mlflow_autolog_noise_filter_installed = True
 
 
 def setup_mlflow_tracing(
@@ -36,6 +65,8 @@ def setup_mlflow_tracing(
     if _tracing_initialized:
         return True
 
+    _install_mlflow_autolog_noise_filter()
+
     # MLflow 3.x deprecates plain ./mlruns file store (FutureWarning on every import path)
     warnings.filterwarnings(
         "ignore",
@@ -61,9 +92,8 @@ def setup_mlflow_tracing(
 
         if enable_autolog:
             try:
-                # run_tracer_inline helps some async paths; LangGraph astream can still hit
-                # https://github.com/mlflow/mlflow/issues/22088 (ContextVar) — use sync
-                # graph.stream in financial-agent-test, or set MLFLOW_LANGCHAIN_LOG_TRACES=false.
+                # run_tracer_inline=True: recommended for LangGraph async + nested @mlflow.trace.
+                # ContextVar noise from mlflow#22088 is filtered above (async MCP tools require astream).
                 mlflow.langchain.autolog(
                     run_tracer_inline=True,
                     log_traces=log_traces,

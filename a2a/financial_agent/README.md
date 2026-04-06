@@ -26,7 +26,7 @@ User Query → Assistant (LLM) → [Tool calls?] → Finance MCP Tools → Assis
 - **Python 3.11+** and **uv**
 - **LM Studio** – Local LLM serving with OpenAI-compatible API
 - **Model**: Load `qwen/qwen3-30b-a3b-2507` (or Qwen3-30B-A3B-Instruct) in LM Studio
-- Optional: **Podman** and **kind** for containerized/Kubernetes deployment
+- Optional: **Kagenti on kind** – install the platform with the [kagenti Ansible installer](https://github.com/kagenti/kagenti/blob/main/deployments/ansible/README.md), then follow [Kagenti setup with Ansible installer on kind](#kagenti-setup-with-ansible-installer-on-kind) below
 
 ---
 
@@ -221,7 +221,7 @@ In the UI:
 | Message | What to do |
 |---------|------------|
 | `FutureWarning: The filesystem tracking backend (e.g., './mlruns') is deprecated` | Use **`MLFLOW_TRACKING_URI=sqlite:///./mlflow.db`** (default in `.env.lmstudio`) or ignore if you intentionally use `./mlruns`. |
-| `ContextVar ... was created in a different Context` from `mlflow.utils.autologging_utils` | Known interaction between **MLflow LangChain autolog** and **async** `graph.astream` ([mlflow#22088](https://github.com/mlflow/mlflow/issues/22088)). **`financial-agent-test` uses sync `graph.stream`** so these should stop for the CLI. The **A2A server** still uses `astream`; to silence trace callbacks there, set **`MLFLOW_LANGCHAIN_LOG_TRACES=false`** (traces disabled) or wait for an MLflow fix. |
+| `ContextVar ... was created in a different Context` from `mlflow.utils.autologging_utils` | Known **MLflow** + async LangGraph issue ([mlflow#22088](https://github.com/mlflow/mlflow/issues/22088)). **`setup_mlflow_tracing()` installs a logging filter** that drops only these messages so the console stays clean; trace autolog stays on. To **disable trace collection** entirely, set **`MLFLOW_LANGCHAIN_LOG_TRACES=false`**. |
 
 **If you still see no traces**
 
@@ -231,28 +231,58 @@ In the UI:
 
 ---
 
-## Kagenti Setup with Podman and kind
+## Kagenti setup with Ansible installer on kind
 
-End-to-end deployment of the Financial Agent and Finance MCP tool in Kagenti, using a local **kind** cluster and **Podman** for building container images.
+Deploy the **Financial Agent** and **Finance MCP tool** on a local **kind** cluster running **Kagenti**. The supported way to install Kagenti on kind is the **Ansible installer** in the [kagenti](https://github.com/kagenti/kagenti) repository (not a hand-rolled `kind create` unless you know exactly what you are doing).
+
+Installer reference: [`deployments/ansible/README.md`](https://github.com/kagenti/kagenti/blob/main/deployments/ansible/README.md) and [`deployments/ansible/run-install.sh`](https://github.com/kagenti/kagenti/blob/main/deployments/ansible/run-install.sh).
 
 ### Prerequisites
 
-- **Podman** – Container runtime (e.g. `brew install podman` on macOS)
-- **kind** – Kubernetes in Docker (`go install sigs.k8s.io/kind@latest` or `brew install kind`)
-- **kubectl** – Kubernetes CLI
-- **Kagenti** – Deployed in the kind cluster ([Kagenti Developer's Guide](https://github.com/kagenti/kagenti/blob/main/docs/dev-guide.md))
-- **LM Studio** – Running on the host with model loaded (port 1234)
+- **kagenti** repo cloned and Ansible collections installed per [deployments/ansible/README.md](https://github.com/kagenti/kagenti/blob/main/deployments/ansible/README.md) (`helm` **v3.x**, `kubectl`, `ansible-galaxy collection install -r collections-reqs.yml`, etc.)
+- **kind** – `brew install kind` or `go install sigs.k8s.io/kind@latest`
+- **Podman or Docker** – Playbook variable `container_engine` must match how you run kind (see below)
+- **LM Studio** – On the host, model loaded (e.g. port 1234)
 
-### Step 1: Create kind cluster
+### Step 1: Install Kagenti with the Ansible installer
+
+From your **kagenti** repository (paths are relative to that repo):
+
+**Docker (default in `default_values.yaml`):**
 
 ```bash
-kind create cluster --name financial-agent-demo
-kubectl cluster-info --context kind-financial-agent-demo
+cd /path/to/kagenti
+deployments/ansible/run-install.sh --env dev
 ```
 
-### Step 2: Build images with Podman
+**Podman** – use the same provider for **all** `kind` commands on this machine. The installer sets `KIND_EXPERIMENTAL_PROVIDER=podman` on `kind` steps when `container_engine` is `podman`:
 
-From the `agent-examples` root:
+```bash
+cd /path/to/kagenti
+export KIND_EXPERIMENTAL_PROVIDER=podman
+deployments/ansible/run-install.sh --env dev --extra-vars '{"container_engine": "podman"}'
+```
+
+Optional: `--preload` preloads images listed in kagenti’s `kind/preload-images.txt` (longer install); it does **not** replace the agent-examples images below unless you add them there.
+
+When the playbook finishes:
+
+- Default kind cluster name is **`kagenti`** (`kind_cluster_name` in `deployments/ansible/default_values.yaml`), context **`kind-kagenti`**.
+- Confirm: `kubectl config current-context` → `kind-kagenti`, and `kind get clusters` lists `kagenti` (with the same `KIND_EXPERIMENTAL_PROVIDER` you used for Podman).
+
+More detail: [Kagenti Developer’s Guide](https://github.com/kagenti/kagenti/blob/main/docs/dev-guide.md).
+
+### Step 2: Recommended path — import from Git (no local `kind load`)
+
+After Ansible install, use the Kagenti UI **Import New Tool** / **Import New Agent** with the Git repo and subfolders (see Steps 5–6 below). Shipwright/Tekton builds images **inside the cluster** from the repository, so you **do not** need to build images on your laptop or run `kind load` for that flow.
+
+### Step 3 (optional): Pre-build images and load into kind
+
+Use this only if you intentionally want local images on the nodes (e.g. iterating without pushing to Git, or air-gapped testing). The cluster name must match the installer: default **`kagenti`**, not a separate demo name.
+
+On **Podman**, Kind must use the experimental provider for **every** `kind` command. Mismatch (cluster created under Docker, `kind load` under Podman, or the reverse) causes **`ERROR: no nodes found for cluster "…"`**.
+
+From the **agent-examples** root:
 
 ```bash
 # Finance MCP tool
@@ -264,24 +294,20 @@ cd ../..
 cd a2a/financial_agent
 podman build -t financial-agent:latest .
 cd ../..
-```
 
-### Step 3: Load images into kind
+export KIND_EXPERIMENTAL_PROVIDER=podman   # omit if using Docker for kind
 
-`kind load` expects images from the Docker daemon. With Podman, save to a tar and load from archive:
-
-```bash
-# Save Podman images to tar
 podman save -o /tmp/finance-tool.tar finance-tool:latest
 podman save -o /tmp/financial-agent.tar financial-agent:latest
 
-# Load into kind cluster
-kind load image-archive /tmp/finance-tool.tar --name financial-agent-demo
-kind load image-archive /tmp/financial-agent.tar --name financial-agent-demo
+# Replace kagenti if you overrode kind_cluster_name in extra-vars
+kind load image-archive /tmp/finance-tool.tar --name kagenti
+kind load image-archive /tmp/financial-agent.tar --name kagenti
 
-# Verify
-docker images  # if Docker is available, or: kind get nodes then exec into node
+podman exec kagenti-control-plane crictl images | head   # or docker exec … on Docker
 ```
+
+If you see **`no nodes found`**, fix provider/name: `kind get clusters`, `podman ps --filter name=kagenti-control-plane`, then `kind delete cluster --name kagenti` and re-run the Ansible installer with consistent `container_engine` / `KIND_EXPERIMENTAL_PROVIDER`.
 
 ### Step 4: Configure environment variable sets
 
@@ -303,23 +329,23 @@ lmstudio: |
   ]
 ```
 
-Apply to your namespace (e.g. `team1`) from the `agent-examples` root:
+Apply to your **team** namespace (the dev Ansible values typically include **`team1`**; create the namespace in Kagenti if it does not exist) from the **agent-examples** root:
 
 ```bash
 cd agent-examples
 kubectl apply -n team1 -f sample-environments.yaml
-# Or merge into your existing Kagenti environments ConfigMap — see Kagenti docs
+# Or merge keys into the Kagenti environments ConfigMap — see Kagenti docs
 ```
 
 **Linux note:** `host.docker.internal` may not resolve from kind on Linux. Use your host IP (e.g. `192.168.1.100:1234`) or configure extra hosts in the kind cluster config.
 
 ### Step 5: Import Finance MCP tool in Kagenti
 
-1. Open the Kagenti UI (e.g. `http://kagenti-ui.localtest.me:8080` or your configured URL)
+1. Open the Kagenti UI (URL from your install, often something like `http://kagenti-ui.localtest.me:8080` — see Ansible / ingress notes in kagenti docs)
 2. Go to **Import New Tool**
 3. Configure:
    - **Namespace**: `team1` (or your namespace)
-   - **Source Repository URL**: `https://github.com/kagenti/agent-examples`
+   - **Source Repository URL**: `https://github.com/kagenti/agent-examples` (or your fork)
    - **Branch/Tag**: `main`
    - **Source Subfolder**: `mcp/finance_tool`
    - **Environment Variable Sets**: *(none required – no API keys)*
@@ -339,7 +365,7 @@ kubectl logs -n team1 deployment/finance-tool -f
 1. Go to **Import New Agent**
 2. Fill in:
    - **Namespace**: `team1`
-   - **Agent Source Repository URL**: `https://github.com/kagenti/agent-examples`
+   - **Agent Source Repository URL**: `https://github.com/kagenti/agent-examples` (or your fork)
    - **Git Branch or Tag**: `main`
    - **Protocol**: `a2a`
    - **Source Subfolder**: `a2a/financial_agent`
@@ -389,19 +415,22 @@ uv run financial-agent-test --query "What is AAPL's PE ratio?"
 
 | Issue | Check |
 |-------|-------|
-| Agent can't reach MCP | `kubectl get svc -n team1` – ensure `finance-tool` service exists; verify `MCP_URL` |
-| Agent can't reach LM Studio | Ensure LM Studio is running; on Linux, replace `host.docker.internal` with host IP |
-| Build fails | Check build logs in Kagenti; verify `pyproject.toml` and Dockerfile paths |
-| Image not found | Re-run `kind load image-archive` with correct cluster name |
+| Ansible install fails or kind errors | [deployments/ansible/README.md](https://github.com/kagenti/kagenti/blob/main/deployments/ansible/README.md): Helm **v3** only; for Podman use `KIND_EXPERIMENTAL_PROVIDER=podman` and `--extra-vars '{"container_engine": "podman"}'` together |
+| `no nodes found for cluster` on `kind load` | Cluster name must match installer (`kagenti` by default); same container runtime/provider as when the cluster was created |
+| Agent can't reach MCP | `kubectl get svc -n team1` – ensure `finance-tool` service exists; verify `MCP_URL` in env sets |
+| Agent can't reach LM Studio | LM Studio running on host; on Linux, replace `host.docker.internal` with host IP in `lmstudio` |
+| Build fails | Kagenti/Shipwright build logs; `Dockerfile` / `pyproject.toml` under the subfolder |
+| Image pull / not found | If you use **Git import**, the cluster builds the image—no `kind load` needed. If you use **optional Step 3**, re-run `kind load image-archive` with **`--name kagenti`** (or your `kind_cluster_name`) |
 
 ---
 
 ## Deployment in Kagenti (summary)
 
-- **Environments**: `mcp-finance` and `lmstudio` are defined in the repo root [`sample-environments.yaml`](../../sample-environments.yaml).
-- **Tool**: **Import New Tool** → subfolder `mcp/finance_tool`; optional env set `mcp-finance` (already encodes `MCP_URL` for in-cluster `finance-tool`).
+- **Platform**: Install Kagenti on kind with the **kagenti** repo Ansible installer (`deployments/ansible/run-install.sh --env dev`, optional Podman extra-vars above). Default kind cluster name: **`kagenti`**, context **`kind-kagenti`**.
+- **Environments**: `mcp-finance` and `lmstudio` are defined in [`sample-environments.yaml`](../../sample-environments.yaml) at the agent-examples repo root; apply to namespace `team1` (or your team namespace).
+- **Tool**: **Import New Tool** → subfolder `mcp/finance_tool`; cluster builds from Git (Step 5). Optional env set **`mcp-finance`** if you want `MCP_URL` from the ConfigMap.
 - **Agent**: **Import New Agent** → subfolder `a2a/financial_agent`; env sets **`lmstudio`** + **`mcp-finance`**.
-- **LLM**: LM Studio on the host at `http://localhost:1234/v1` (in-cluster use `host.docker.internal` in `LLM_API_BASE` where supported).
+- **LLM**: LM Studio on the host (in-cluster `LLM_API_BASE` uses `host.docker.internal` where supported; adjust on Linux).
 
 ---
 
