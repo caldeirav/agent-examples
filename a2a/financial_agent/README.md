@@ -108,7 +108,8 @@ If your LM Studio model id differs from the default, set **`LLM_MODEL`** in `.en
 | `MCP_URL` | `http://localhost:8000/mcp` | Finance MCP server URL |
 | `MCP_TRANSPORT` | `streamable_http` | MCP transport protocol |
 | `PORT` | `8000` | Agent HTTP port (`.env.lmstudio` sets `8001` when sharing the host with the finance tool on 8000) |
-| `MLFLOW_TRACKING_URI` | `./mlruns` | MLflow tracking directory |
+| `MLFLOW_TRACKING_URI` | `sqlite:///./mlflow.db` | MLflow backend (SQLite file in cwd) |
+| `MLFLOW_LANGCHAIN_LOG_TRACES` | `true` | Set `false` to disable LangChain trace autolog (e.g. avoid async ContextVar noise on A2A server) |
 | `MLFLOW_EXPERIMENT_NAME` | `financial-agent` | MLflow experiment name |
 
 ### Console scripts (`pyproject.toml`)
@@ -192,18 +193,41 @@ uv run financial-agent-test -q "Your custom financial question here"
 
 ---
 
-## MLflow Tracing
+## MLflow tracing
 
-Agent runs are traced automatically when MLflow is configured.
+The agent calls `mlflow.langchain.autolog()` at startup (`agent.py` and the `financial-agent-test` CLI). That integration records **Traces** for LangChain/LangGraph LLM and tool spans.
 
-**View traces** (use the project venv so the `mlflow` CLI matches dependencies):
+**Why the `langchain` package is required:** MLflow’s autolog path imports the **`langchain`** distribution for version checks before patching callbacks. This project uses `langchain-core` and friends directly; **`langchain`** is still listed in `pyproject.toml` so autolog can initialize. Without it, autolog fails and the UI shows **“No traces recorded”**.
+
+**Default tracking URI** is **`sqlite:///./mlflow.db`** (under `a2a/financial_agent/`), which avoids MLflow’s **FutureWarning** about the deprecated `./mlruns` file store.
+
+**View traces** (URI and experiment must match where the agent wrote data):
 
 ```bash
 cd a2a/financial_agent
-uv run mlflow ui --backend-store-uri ./mlruns
+uv run mlflow ui --backend-store-uri sqlite:///$(pwd)/mlflow.db
 ```
 
-Open http://localhost:5000 to see traces, spans, and tool calls.
+On shells without `$(pwd)`, use an absolute path, e.g. `sqlite:////Users/you/Code/agent-examples/a2a/financial_agent/mlflow.db`.
+
+In the UI:
+
+1. Open **Experiments** and select **`financial-agent`** (or whatever you set in `MLFLOW_EXPERIMENT_NAME`).
+2. Open the **Traces** tab for that experiment.
+3. Generate load: send a request through the A2A server or run `uv run financial-agent-test -q "What is AAPL's PE ratio?"` while LM Studio and the finance MCP tool are up.
+
+**Warnings you might see**
+
+| Message | What to do |
+|---------|------------|
+| `FutureWarning: The filesystem tracking backend (e.g., './mlruns') is deprecated` | Use **`MLFLOW_TRACKING_URI=sqlite:///./mlflow.db`** (default in `.env.lmstudio`) or ignore if you intentionally use `./mlruns`. |
+| `ContextVar ... was created in a different Context` from `mlflow.utils.autologging_utils` | Known interaction between **MLflow LangChain autolog** and **async** `graph.astream` ([mlflow#22088](https://github.com/mlflow/mlflow/issues/22088)). **`financial-agent-test` uses sync `graph.stream`** so these should stop for the CLI. The **A2A server** still uses `astream`; to silence trace callbacks there, set **`MLFLOW_LANGCHAIN_LOG_TRACES=false`** (traces disabled) or wait for an MLflow fix. |
+
+**If you still see no traces**
+
+- Confirm logs include `MLflow LangChain autolog enabled` (not the autolog **failed** warning).
+- Run `mlflow ui` with the **same** `--backend-store-uri` as `MLFLOW_TRACKING_URI`.
+- Tracing hooks fire on **LangChain** invocations inside the graph; ensure at least one successful run completed after autolog was enabled.
 
 ---
 
@@ -409,7 +433,7 @@ uv run financial-agent-test --query "What is AAPL's PE ratio?"
 
 ## Dependencies (high level)
 
-Declared in `pyproject.toml`: **a2a-sdk** (provides the `a2a.*` imports), **langgraph**, **langchain-openai**, **langchain-core**, **langchain-mcp-adapters**, **pydantic-settings**, **mlflow**, **uvicorn**, **openinference-instrumentation-langchain**. Use **`a2a-sdk`** only — do not add the unrelated PyPI package named `a2a`.
+Declared in `pyproject.toml`: **a2a-sdk** (provides the `a2a.*` imports), **langgraph**, **langchain** (metapackage so **MLflow** `langchain.autolog` can run), **langchain-openai**, **langchain-core**, **langchain-mcp-adapters**, **pydantic-settings**, **mlflow**, **uvicorn**, **openinference-instrumentation-langchain**. Use **`a2a-sdk`** only — do not add the unrelated PyPI package named `a2a`.
 
 ---
 
@@ -435,6 +459,7 @@ financial_agent/
 ├── Dockerfile
 ├── pyrightconfig.json
 ├── .env.lmstudio         # Local LM Studio + MCP template (loaded automatically)
+├── .gitignore            # mlruns/, mlflow.db, .env
 └── README.md
 ```
 

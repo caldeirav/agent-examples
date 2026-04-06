@@ -22,5 +22,6 @@ class Configuration(BaseSettings):
     mcp_url: str = "http://localhost:8000/mcp"
     mcp_transport: str = "streamable_http"
     port: int = 8000
-    mlflow_tracking_uri: str = "./mlruns"
+    # SQLite avoids MLflow FutureWarning on deprecated file-store ./mlruns (Feb 2026+)
+    mlflow_tracking_uri: str = "sqlite:///./mlflow.db"
     mlflow_experiment_name: str = "financial-agent"

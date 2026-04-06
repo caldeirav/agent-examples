@@ -3,6 +3,10 @@
 import argparse
 import asyncio
 
+from financial_agent.observability import setup_mlflow_tracing
+
+setup_mlflow_tracing()
+
 USE_CASES = [
     "What is AAPL's PE ratio?",
     "Compare the market caps of Microsoft and Apple",
@@ -26,7 +30,9 @@ async def run_query(query: str, verbose: bool = True) -> str:
     input_data = {"messages": [HumanMessage(content=query)]}
     final_answer = None
 
-    async for event in graph.astream(input_data, stream_mode="updates"):
+    # Sync stream avoids MLflow+LangChain callback ContextVar issues with async astream
+    # (https://github.com/mlflow/mlflow/issues/22088). The A2A server still uses astream.
+    for event in graph.stream(input_data, stream_mode="updates"):
         for node_name, node_output in event.items():
             if verbose:
                 print(f"  [{node_name}] ", end="")

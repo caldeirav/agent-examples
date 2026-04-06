@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk>=0.2.16",
     "langgraph>=0.2.55",
+    # Metapackage: required so mlflow.langchain.autolog() can import `langchain` for version checks
+    "langchain>=0.3.0",
     "langchain-openai>=0.3.7",
     "langchain-mcp-adapters>=0.1.0",
     "openinference-instrumentation-langchain>=0.1.36",
