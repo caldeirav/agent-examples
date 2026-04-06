@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import sys
-from typing import Optional
 
 import yfinance as yf
 from fastmcp import FastMCP
@@ -58,15 +57,11 @@ def get_stock_fundamentals(ticker: str) -> str:
             "beta": info.get("beta", "N/A"),
             "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
             "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-            "current_price": info.get(
-                "currentPrice", info.get("regularMarketPrice", "N/A")
-            ),
+            "current_price": info.get("currentPrice", info.get("regularMarketPrice", "N/A")),
             "target_mean_price": info.get("targetMeanPrice", "N/A"),
             "recommendation": info.get("recommendationKey", "N/A"),
             "business_summary": (
-                (info.get("longBusinessSummary", "")[:500] + "...")
-                if info.get("longBusinessSummary")
-                else "N/A"
+                (info.get("longBusinessSummary", "")[:500] + "...") if info.get("longBusinessSummary") else "N/A"
             ),
         }
         return json.dumps(fundamentals, indent=2)
@@ -104,9 +99,7 @@ def get_historical_prices(ticker: str, period: str = "1mo") -> str:
             "end_date": str(hist.index[-1].date()),
             "start_price": round(hist["Close"].iloc[0], 2),
             "end_price": round(hist["Close"].iloc[-1], 2),
-            "period_return_pct": round(
-                ((hist["Close"].iloc[-1] / hist["Close"].iloc[0]) - 1) * 100, 2
-            ),
+            "period_return_pct": round(((hist["Close"].iloc[-1] / hist["Close"].iloc[0]) - 1) * 100, 2),
             "highest_price": round(hist["High"].max(), 2),
             "lowest_price": round(hist["Low"].min(), 2),
             "avg_volume": int(hist["Volume"].mean()),
@@ -173,9 +166,7 @@ def get_financial_statements(ticker: str) -> str:
                     else str(balance_sheet.columns[0])
                 ),
                 "total_assets": float(latest.get("Total Assets", 0)),
-                "total_liabilities": float(
-                    latest.get("Total Liabilities Net Minority Interest", 0)
-                ),
+                "total_liabilities": float(latest.get("Total Liabilities Net Minority Interest", 0)),
                 "total_equity": float(
                     latest.get(
                         "Stockholders Equity",
@@ -183,9 +174,7 @@ def get_financial_statements(ticker: str) -> str:
                     )
                 ),
                 "total_debt": float(latest.get("Total Debt", 0)),
-                "cash_and_equivalents": float(
-                    latest.get("Cash And Cash Equivalents", 0)
-                ),
+                "cash_and_equivalents": float(latest.get("Cash And Cash Equivalents", 0)),
             }
         if not cash_flow.empty:
             latest = cash_flow.iloc[:, 0]
@@ -225,9 +214,7 @@ def get_company_news(ticker: str) -> str:
         stock = yf.Ticker(ticker.upper())
         news = stock.news
         if not news:
-            return json.dumps(
-                {"ticker": ticker.upper(), "news": [], "message": "No recent news found"}
-            )
+            return json.dumps({"ticker": ticker.upper(), "news": [], "message": "No recent news found"})
         news_items = []
         for item in news[:10]:
             news_items.append(
@@ -254,12 +241,9 @@ def run_server():
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
 
+    logger.info(f"Starting Yahoo Finance MCP Server on {host}:{port} with transport={transport}")
     logger.info(
-        f"Starting Yahoo Finance MCP Server on {host}:{port} with transport={transport}"
-    )
-    logger.info(
-        "Registered tools: get_stock_fundamentals, get_historical_prices, "
-        "get_financial_statements, get_company_news"
+        "Registered tools: get_stock_fundamentals, get_historical_prices, get_financial_statements, get_company_news"
     )
     mcp.run(transport=transport, host=host, port=port)
 

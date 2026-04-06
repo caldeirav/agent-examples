@@ -4,6 +4,10 @@ import logging
 from textwrap import dedent
 
 import uvicorn
+from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -11,10 +15,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from langchain_core.messages import HumanMessage
-from openinference.instrumentation.langchain import LangChainInstrumentor
-from starlette.routing import Route
-
 from financial_agent.configuration import Configuration
 from financial_agent.graph import get_graph, get_mcpclient
 from financial_agent.observability import setup_mlflow_tracing
@@ -79,9 +79,7 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(
-        self, message: str, final: bool = False, failed: bool = False
-    ) -> None:
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         logger.info("Emitting event %s", message[:80] + "..." if len(message) > 80 else message)
         if final or failed:
             parts = [TextPart(text=message)]
@@ -148,9 +146,7 @@ class FinancialExecutor(AgentExecutor):
                 )
         except Exception as e:
             logger.exception(f"Graph execution error: {e}")
-            await event_emitter.emit_event(
-                f"Error: Failed to process request. {str(e)}", failed=True
-            )
+            await event_emitter.emit_event(f"Error: Failed to process request. {str(e)}", failed=True)
             raise
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

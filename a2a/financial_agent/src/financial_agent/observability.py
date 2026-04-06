@@ -28,9 +28,7 @@ def setup_mlflow_tracing(
         return True
 
     tracking_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI", "./mlruns")
-    experiment_name = experiment_name or os.getenv(
-        "MLFLOW_EXPERIMENT_NAME", "financial-agent"
-    )
+    experiment_name = experiment_name or os.getenv("MLFLOW_EXPERIMENT_NAME", "financial-agent")
 
     try:
         import mlflow

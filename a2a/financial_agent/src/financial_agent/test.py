@@ -1,8 +1,7 @@
 """Test runner for the Financial Agent - runs use cases directly against the graph."""
 
-import asyncio
 import argparse
-import sys
+import asyncio
 
 USE_CASES = [
     "What is AAPL's PE ratio?",
@@ -34,11 +33,7 @@ async def run_query(query: str, verbose: bool = True) -> str:
             if isinstance(node_output, dict) and "final_answer" in node_output:
                 final_answer = node_output["final_answer"]
             if verbose and node_output:
-                preview = (
-                    str(node_output)[:120] + "..."
-                    if len(str(node_output)) > 120
-                    else str(node_output)
-                )
+                preview = str(node_output)[:120] + "..." if len(str(node_output)) > 120 else str(node_output)
                 print(preview)
 
     return final_answer or "No response"
@@ -47,7 +42,7 @@ async def run_query(query: str, verbose: bool = True) -> str:
 async def run_all(queries: list[str], verbose: bool) -> None:
     """Run all queries."""
     for i, query in enumerate(queries, 1):
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Use case {i}/{len(queries)}: {query}")
         print("=" * 60)
         try:
@@ -60,12 +55,8 @@ async def run_all(queries: list[str], verbose: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Test Financial Agent")
-    parser.add_argument(
-        "--query", "-q", help="Single query to run (default: run all use cases)"
-    )
-    parser.add_argument(
-        "--quiet", "-Q", action="store_true", help="Only print final answers"
-    )
+    parser.add_argument("--query", "-q", help="Single query to run (default: run all use cases)")
+    parser.add_argument("--quiet", "-Q", action="store_true", help="Only print final answers")
     args = parser.parse_args()
 
     queries = [args.query] if args.query else USE_CASES
