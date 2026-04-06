@@ -1,7 +1,6 @@
 """A2A agent entry point for the Financial Agent."""
 
 import logging
-import os
 from textwrap import dedent
 
 import uvicorn
@@ -16,6 +15,7 @@ from langchain_core.messages import HumanMessage
 from openinference.instrumentation.langchain import LangChainInstrumentor
 from starlette.routing import Route
 
+from financial_agent.configuration import Configuration
 from financial_agent.graph import get_graph, get_mcpclient
 from financial_agent.observability import setup_mlflow_tracing
 
@@ -115,7 +115,7 @@ class FinancialExecutor(AgentExecutor):
         messages = [HumanMessage(content=context.get_user_input())]
         input_data = {"messages": messages}
 
-        mcp_url = os.getenv("MCP_URL", "http://localhost:8000/mcp")
+        mcp_url = Configuration().mcp_url
         try:
             mcpclient = get_mcpclient()
             try:
@@ -159,7 +159,8 @@ class FinancialExecutor(AgentExecutor):
 
 def run() -> None:
     """Run the A2A Financial Agent server."""
-    port = int(os.getenv("PORT", "8000"))
+    cfg = Configuration()
+    port = cfg.port
     agent_card = get_agent_card(host="0.0.0.0", port=port)
     request_handler = DefaultRequestHandler(
         agent_executor=FinancialExecutor(),

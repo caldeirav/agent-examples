@@ -17,10 +17,13 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "mlflow>=3.0.0",
     "uvicorn>=0.30.0",
+    "langchain-core>=1.2.18",
 ]
 
 [project.scripts]
 server = "financial_agent.agent:run"
+# Matches distribution name `financial-agent`; `test-agent` kept as short alias
+financial-agent-test = "financial_agent.test:main"
 test-agent = "financial_agent.test:main"
 
 [build-system]

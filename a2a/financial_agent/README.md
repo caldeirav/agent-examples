@@ -54,43 +54,72 @@ uv run finance_tool.py
 
 Runs on `http://0.0.0.0:8000` with streamable-http MCP transport.
 
-### Step 3: Financial Agent
+### Step 3: Configuration (defaults vs env files)
 
-**New terminal** (keep the finance tool running):
+Settings are loaded by `Configuration` in `src/financial_agent/configuration.py` using [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/). **Precedence (highest wins):**
+
+1. **Shell / process environment variables** (e.g. `export PORT=9000`)
+2. **`.env`** in the project directory (same folder as `pyproject.toml`)
+3. **`.env.lmstudio`** (checked-in template; loaded if present)
+4. **In-code defaults** (see table below)
+
+Dotenv files are only read from the **current working directory** when you start the app—run `uv run server` from `a2a/financial_agent/` so `.env.lmstudio` is found.
+
+The repo includes **`.env.lmstudio`** with a typical LM Studio + local finance-tool layout (including **`PORT=8001`** so the agent does not bind to 8000 while the finance MCP tool uses it). You do **not** need to copy it to `.env` unless you want overrides.
+
+| Setting | In-code default | `.env.lmstudio` |
+|---------|-----------------|-----------------|
+| `MCP_URL` | `http://localhost:8000/mcp` | same |
+| `LLM_API_BASE` | `http://localhost:1234/v1` | same |
+| `LLM_MODEL` | `qwen/qwen3-30b-a3b-2507` | same (change if LM Studio shows a different id) |
+| `PORT` | `8000` | `8001` (recommended when finance tool is on 8000) |
+
+**Optional `.env`** — add only for secrets or overrides (not committed). Same keys as `.env.lmstudio`; `.env` wins over `.env.lmstudio` when both exist.
+
+```bash
+cd agent-examples/a2a/financial_agent
+# Example: create .env with only overrides
+echo 'LLM_MODEL=your-exact-lm-studio-model-id' >> .env
+```
+
+### Step 4: Financial Agent
+
+**New terminal** (keep LM Studio and the finance tool running):
 
 ```bash
 cd agent-examples/a2a/financial_agent
 uv lock
-export MCP_URL=http://localhost:8000/mcp
-export LLM_API_BASE=http://localhost:1234/v1
-export LLM_MODEL=qwen/qwen3-30b-a3b-2507   # Use the model name shown in LM Studio
-# Use port 8001 for local dev (finance tool uses 8000)
-PORT=8001 uv run server
+uv run server
 ```
 
-### Step 4: Environment File (Optional)
+With **`.env.lmstudio`** in the tree, **`PORT=8001`** applies automatically. If you remove that file or want another port, use `PORT=8002 uv run server` or set `PORT` in `.env`.
 
-Copy and edit the example env:
-
-```bash
-cp .env.lmstudio .env
-# Edit .env if needed (LLM_MODEL must match LM Studio's loaded model name)
-```
+If your LM Studio model id differs from the default, set **`LLM_MODEL`** in `.env.lmstudio`, in `.env`, or export it in the shell.
 
 ---
 
-## Configuration
+## Configuration reference
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LLM_API_BASE` | `http://localhost:1234/v1` | LM Studio OpenAI-compatible endpoint |
-| `LLM_MODEL` | `qwen/qwen3-30b-a3b-2507` | Model name (match LM Studio) |
+| `LLM_MODEL` | `qwen/qwen3-30b-a3b-2507` | Model name (must match LM Studio) |
 | `LLM_API_KEY` | `not-needed` | API key (LM Studio local needs none) |
 | `MCP_URL` | `http://localhost:8000/mcp` | Finance MCP server URL |
 | `MCP_TRANSPORT` | `streamable_http` | MCP transport protocol |
-| `PORT` | `8000` | Agent HTTP port (use 8001 for local dev with finance tool on 8000) |
+| `PORT` | `8000` | Agent HTTP port (`.env.lmstudio` sets `8001` when sharing the host with the finance tool on 8000) |
 | `MLFLOW_TRACKING_URI` | `./mlruns` | MLflow tracking directory |
 | `MLFLOW_EXPERIMENT_NAME` | `financial-agent` | MLflow experiment name |
+
+### Console scripts (`pyproject.toml`)
+
+| Command | Entry point | Purpose |
+|---------|-------------|---------|
+| `uv run server` | `financial_agent.agent:run` | A2A HTTP server (uvicorn) |
+| `uv run financial-agent-test` | `financial_agent.test:main` | Run graph tests / `USE_CASES` |
+| `uv run test-agent` | same as `financial-agent-test` | Short alias |
+
+The **distribution name** in `pyproject.toml` is `financial-agent`; only the script names above are valid `uv run …` targets unless you add more under `[project.scripts]`.
 
 ---
 
@@ -98,28 +127,32 @@ cp .env.lmstudio .env
 
 ### A2A Server Mode
 
+From `a2a/financial_agent/`:
+
 ```bash
 uv run server
 ```
 
-Starts the A2A agent server. Interact via A2A JSON-RPC (e.g. from Kagenti or a test client).
+Starts the A2A agent server. Interact via A2A JSON-RPC (e.g. from Kagenti or a test client). **Listen port** comes from `PORT` (see configuration above).
 
-### Direct Test (No A2A Server)
+### Direct test (no A2A server)
 
-Run the graph directly for quick local testing:
+Run the LangGraph directly (still requires LM Studio + finance MCP tool). From `a2a/financial_agent/`:
 
 ```bash
-uv run test-agent
+uv run financial-agent-test
 ```
 
-Runs all built-in use cases. Options:
+Runs all built-in use cases. (This is the console script from `[project.scripts]`; the distribution is named `financial-agent`, not a runnable command by itself. Short alias: `uv run test-agent`.)
+
+Options:
 
 ```bash
 # Single query
-uv run test-agent --query "What is AAPL's PE ratio?"
+uv run financial-agent-test --query "What is AAPL's PE ratio?"
 
 # Quiet mode (only final answers)
-uv run test-agent --quiet
+uv run financial-agent-test --quiet
 ```
 
 ---
@@ -154,7 +187,7 @@ USE_CASES = [
 Or pass any query via CLI:
 
 ```bash
-uv run test-agent -q "Your custom financial question here"
+uv run financial-agent-test -q "Your custom financial question here"
 ```
 
 ---
@@ -163,10 +196,11 @@ uv run test-agent -q "Your custom financial question here"
 
 Agent runs are traced automatically when MLflow is configured.
 
-**View traces:**
+**View traces** (use the project venv so the `mlflow` CLI matches dependencies):
+
 ```bash
 cd a2a/financial_agent
-mlflow ui --backend-store-uri ./mlruns
+uv run mlflow ui --backend-store-uri ./mlruns
 ```
 
 Open http://localhost:5000 to see traces, spans, and tool calls.
@@ -227,16 +261,16 @@ docker images  # if Docker is available, or: kind get nodes then exec into node
 
 ### Step 4: Configure environment variable sets
 
-Ensure `sample-environments.yaml` (or your Kagenti ConfigMap) includes `mcp-finance` and `lmstudio`:
+The repo root defines **`mcp-finance`** and **`lmstudio`** in [`sample-environments.yaml`](../../sample-environments.yaml) (alongside `ollama`, `mcp-reservations`, etc.). Use that file as a reference or apply it to your cluster namespace.
+
+Key entries for this agent:
 
 ```yaml
-# Already in sample-environments.yaml:
 mcp-finance: |
   [
     {"name": "MCP_URL", "value": "http://finance-tool:8000/mcp"}
   ]
 
-# Add lmstudio for LM Studio (local host):
 lmstudio: |
   [
     {"name": "LLM_API_BASE", "value": "http://host.docker.internal:1234/v1"},
@@ -245,11 +279,12 @@ lmstudio: |
   ]
 ```
 
-Apply to your namespace (e.g. `team1`):
+Apply to your namespace (e.g. `team1`) from the `agent-examples` root:
 
 ```bash
+cd agent-examples
 kubectl apply -n team1 -f sample-environments.yaml
-# Or merge into existing ConfigMap - see Kagenti docs
+# Or merge into your existing Kagenti environments ConfigMap — see Kagenti docs
 ```
 
 **Linux note:** `host.docker.internal` may not resolve from kind on Linux. Use your host IP (e.g. `192.168.1.100:1234`) or configure extra hosts in the kind cluster config.
@@ -312,13 +347,18 @@ Use the Agent Catalog / chat interface to send a message such as:
 What is AAPL's PE ratio?
 ```
 
-**Option B – Port-forward and A2A client**
+**Option B – Port-forward and local test client**
 
 ```bash
-# Port-forward agent service
+# Port-forward agent service (adjust service name if your cluster differs)
 kubectl port-forward -n team1 svc/financial-agent 8001:8000
+```
 
-# Use test_agent.py or any A2A client against http://localhost:8001
+Point an A2A client at `http://localhost:8001`, or from a **local clone** of this repo run the graph test (LM Studio + finance MCP must still be reachable from your machine):
+
+```bash
+cd a2a/financial_agent
+uv run financial-agent-test --query "What is AAPL's PE ratio?"
 ```
 
 ### Troubleshooting Kagenti deployment
@@ -332,11 +372,12 @@ kubectl port-forward -n team1 svc/financial-agent 8001:8000
 
 ---
 
-## Deployment in Kagenti (Summary)
+## Deployment in Kagenti (summary)
 
-- **Tool**: Import via **Import New Tool** → subfolder `mcp/finance_tool`, env `mcp-finance` (optional)
-- **Agent**: Import via **Import New Agent** → subfolder `a2a/financial_agent`, envs `lmstudio` + `mcp-finance`
-- **LLM**: LM Studio on host at `http://localhost:1234/v1` (use `host.docker.internal` in Kubernetes)
+- **Environments**: `mcp-finance` and `lmstudio` are defined in the repo root [`sample-environments.yaml`](../../sample-environments.yaml).
+- **Tool**: **Import New Tool** → subfolder `mcp/finance_tool`; optional env set `mcp-finance` (already encodes `MCP_URL` for in-cluster `finance-tool`).
+- **Agent**: **Import New Agent** → subfolder `a2a/financial_agent`; env sets **`lmstudio`** + **`mcp-finance`**.
+- **LLM**: LM Studio on the host at `http://localhost:1234/v1` (in-cluster use `host.docker.internal` in `LLM_API_BASE` where supported).
 
 ---
 
@@ -361,25 +402,39 @@ kubectl port-forward -n team1 svc/financial-agent 8001:8000
 
 ### Port conflicts
 
-- Finance tool: 8000
-- Agent: 8001 (via `PORT=8001`)
+- Finance MCP tool: **8000** (default)
+- Agent: **8001** when both run on one host — set via **`.env.lmstudio`** (`PORT=8001`), **`.env`**, or `PORT=8001 uv run server`
 
 ---
 
-## Project Structure
+## Dependencies (high level)
+
+Declared in `pyproject.toml`: **a2a-sdk** (provides the `a2a.*` imports), **langgraph**, **langchain-openai**, **langchain-core**, **langchain-mcp-adapters**, **pydantic-settings**, **mlflow**, **uvicorn**, **openinference-instrumentation-langchain**. Use **`a2a-sdk`** only — do not add the unrelated PyPI package named `a2a`.
+
+---
+
+## IDE / type checking
+
+If you use a **multi-root** workspace or open a parent folder, select the interpreter **`a2a/financial_agent/.venv/bin/python`** and run **`uv sync`** in `a2a/financial_agent/`. **`pyrightconfig.json`** in this directory points Pyright/Pylance at `.venv` and `src/`.
+
+---
+
+## Project structure
 
 ```
 financial_agent/
 ├── src/financial_agent/
-│   ├── agent.py       # A2A server entry point
-│   ├── graph.py       # LangGraph workflow
-│   ├── configuration.py
+│   ├── agent.py          # A2A server entry point
+│   ├── graph.py          # LangGraph workflow
+│   ├── configuration.py  # pydantic-settings; .env.lmstudio + .env
 │   ├── prompts.py
 │   ├── observability.py  # MLflow setup
-│   └── test.py        # Test runner + USE_CASES
+│   └── test.py           # Test runner + USE_CASES
 ├── pyproject.toml
+├── uv.lock
 ├── Dockerfile
-├── .env.lmstudio
+├── pyrightconfig.json
+├── .env.lmstudio         # Local LM Studio + MCP template (loaded automatically)
 └── README.md
 ```
 
